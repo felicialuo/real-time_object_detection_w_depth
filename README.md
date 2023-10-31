@@ -4,7 +4,8 @@ Real-time object detection and visualization using YOLOv3 and extract depth info
 Original code: [dev_realsense_yolo_v3 by Tony](https://github.com/dovanhuong/dev_realsense_yolo_v3_2d#dev_realsense_yolo_v3-by-tony)
 
 
-## Installation instructions
+## Set Up Environment
+Tested on Windows 10, with AMD® Ryzen 9 7900x & NVIDIA GeForce RTX 3090 Ti.
 ```
 conda create --name realsense
 conda activate realsense
