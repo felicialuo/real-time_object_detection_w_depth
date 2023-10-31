@@ -14,7 +14,7 @@ pip install pyrealsense2
 pip install opencv-python
 ```
 
-## Run the script
+## Run the Script
 - Download [weight file of YOLOv3]( https://pjreddie.com/media/files/yolov3.weights) and place it in the main directory.
 - Run the script from terminal `python script.py`. Press `Ctrl+C` or `q` to quit.
 - Visualization example:
