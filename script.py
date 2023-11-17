@@ -1,9 +1,7 @@
 """
 Inference yolov3 in Realsense D435 camera
 Creator: Tony Do
-Date: 9nd July, 2021
 E-mail: vanhuong.robotics@gmail.com
-- updated object depth information
 Modified by Felicia Luo, Oct 2nd, 2023
 """
 import pyrealsense2 as rs
