@@ -106,8 +106,8 @@ if not found_rgb:
     print("The demo requires Depth camera with Color sensor")
     sys.exit()
 
-config.enable_stream(rs.stream.depth, rs.format.z16, 30)
-config.enable_stream(rs.stream.color, rs.format.bgr8, 30)
+config.enable_stream(rs.stream.depth, rs.format.z16, 6) #30
+config.enable_stream(rs.stream.color, rs.format.bgr8, 6) #30
 
 # Start streaming
 pipeline.start(config)
@@ -249,8 +249,11 @@ def frustum(out, intrinsics, color=(0x40, 0x40, 0x40)):
             return p
 
         top_left = get_point(0, 0)
+        # print('frustum top left', top_left)
         top_right = get_point(w, 0)
         bottom_right = get_point(w, h)
+        # print('w', w, 'h', h)
+        # print('frustum bottom right', bottom_right)
         bottom_left = get_point(0, h)
 
         line3d(out, view(top_left), view(top_right), color)
@@ -332,47 +335,59 @@ def img2cam(points, K, depths=None):
 
     return cam_3d
 
-def drawPredicted(classId, conf, x, y, intrinsics):
-    print(classId, conf, x, y)
-    # cv2.rectangle(frame, (left,top), (right,bottom), (255,178,50),3)
+def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
+    # print('original', left, top, right, bottom)
+    left, top, right, bottom = left//2, top//2, right//2, bottom//2 # view w 320 h 240
+    # print('after', left, top, right, bottom)
     dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
-    distance = dpt_frame.get_distance(x,y)
-    # cv2.circle(frame,(x,y),radius=1,color=(0,0,254), thickness=5)
+
     label = '%.2f' % conf
     if classes:
         assert(classId < len(classes))
         label = '%s' %(classes[classId])
-    # labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-    # top = max(top, labelSize[1])
+
     print('label', label)
 
-    # dist_tl = dpt_frame.get_distance(left, top)
-    # dist_tr = dpt_frame.get_distance(right, top)
-    # dist_bl = dpt_frame.get_distance(left, bottom)
-    # dist_br = dpt_frame.get_distance(right, bottom)
-    # depths = np.array([dist_tl, dist_tr, dist_bl, dist_br])
-    # points = np.array([[left, top], [right, top], [left, bottom], [bottom, top]])
-    # print("intrinsics", intrinsics.__dir__())
-    # tl, tr, bl, br = img2cam(points, intrinsics, depths)
-    # tl = rs.rs2_deproject_pixel_to_point(intrinsics, [left, top], dist_tl)
-    # tr = rs.rs2_deproject_pixel_to_point(intrinsics, [right, top], dist_tr)
-    # bl = rs.rs2_deproject_pixel_to_point(intrinsics, [left, bottom], dist_bl)
-    # br = rs.rs2_deproject_pixel_to_point(intrinsics, [bottom, top], dist_br)
+    dist_tl = dpt_frame.get_distance(left, top)
+    dist_tr = dpt_frame.get_distance(right, top)
+    dist_bl = dpt_frame.get_distance(left, bottom)
+    dist_br = dpt_frame.get_distance(right, bottom)
+    dist_min = min(dist_tl, dist_tr, dist_bl, dist_br)
+    dist_max = max(dist_tl, dist_tr, dist_bl, dist_br)
+    # print('dist', dist_tl, dist_tr, dist_bl, dist_br)
 
-    # draw 3d bbox
-    # line3d(out, view(tl), view(tr), color=(0x80, 0x80, 0x80), thickness=3)
-    # line3d(out, view(tr), view(br), color=(0x80, 0x80, 0x80), thickness=3)
-    # line3d(out, view(br), view(bl), color=(0x80, 0x80, 0x80), thickness=3)
-    # line3d(out, view(bl), view(tl), color=(0x80, 0x80, 0x80), thickness=3)
-    xyz = rs.rs2_deproject_pixel_to_point(intrinsics, [x, y], distance)
-    print('xyz', xyz)
-    line3d(out, view([0, 0, 0]), view(xyz), color=(0x80, 0x80, 0x80), thickness=3)
-    # cv2.putText(frame, label,(left,top-5), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
-    # distance_string = "Dist: " + str(round(distance,2)) + " meter away"
-    # print('\t' + distance_string)
-    # cv2.putText(frame,distance_string,(left,top+30), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
+    if dist_min and dist_max: # only draw if valid distance
+        # get 3d bbox vertices
+        tl_front = rs.rs2_deproject_pixel_to_point(intrinsics, [left, top], dist_min)
+        tr_front = rs.rs2_deproject_pixel_to_point(intrinsics, [right, top], dist_min)
+        bl_front = rs.rs2_deproject_pixel_to_point(intrinsics, [left, bottom], dist_min)
+        br_front = rs.rs2_deproject_pixel_to_point(intrinsics, [right, bottom], dist_min)
 
-def process_detection(frame, outs, intrinsics):
+        tl_back = rs.rs2_deproject_pixel_to_point(intrinsics, [left, top], dist_max)
+        tr_back = rs.rs2_deproject_pixel_to_point(intrinsics, [right, top], dist_max)
+        bl_back = rs.rs2_deproject_pixel_to_point(intrinsics, [left, bottom], dist_max)
+        br_back = rs.rs2_deproject_pixel_to_point(intrinsics, [right, bottom], dist_max)
+
+        # draw 3d bbox
+        line3d(out, view(tl_front), view(tr_front), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(tr_front), view(br_front), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(br_front), view(bl_front), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(bl_front), view(tl_front), color=(0x8B, 0x0, 0x0), thickness=3)
+
+        line3d(out, view(tl_back), view(tr_back), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(tr_back), view(br_back), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(br_back), view(bl_back), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(bl_back), view(tl_back), color=(0x8B, 0x0, 0x0), thickness=3)
+
+        line3d(out, view(tl_front), view(tl_back), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(tr_front), view(tr_back), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(bl_front), view(bl_back), color=(0x8B, 0x0, 0x0), thickness=3)
+        line3d(out, view(br_front), view(br_back), color=(0x8B, 0x0, 0x0), thickness=3)
+    
+    return label
+
+
+def process_detection(frame, outs, intrinsics, out):
     frameHeight = frame.shape[0]
     frameWidth = frame.shape[1]
     classIds = []
@@ -398,20 +413,24 @@ def process_detection(frame, outs, intrinsics):
     print('detections:', len(indices))
 
     # only save detection if person is detected
-    if 0 in indices:
-        print("Person detected")
-        for i in indices:
-            # i = i[0]
-            box = boxes[i]
-            left = box[0]
-            top = box[1]
-            width = box[2]
-            height = box[3]
-            right = min(left+width, frameWidth-1)
-            bottom = min(top+height, frameHeight-1)
-            x = int(left+width/2)
-            y = int(top+ height/2)
-            drawPredicted(classIds[i], confidences[i], x, y, intrinsics)
+    # if 0 in indices:
+    #     print("Person detected")
+    labels = ''
+    for i in indices:
+        # i = i[0]
+        box = boxes[i]
+        left = max(0, box[0])
+        top = max(0, box[1])
+        width = box[2]
+        height = box[3]
+        right = min(left+width, frameWidth-1)
+        bottom = min(top+height, frameHeight-1)
+        x = int(left+width/2)
+        y = int(top+ height/2)
+        # drawPredicted(classIds[i], confidences[i], x, y, intrinsics)
+        label = drawPredicted(classIds[i], confidences[i], left, top, right, bottom, intrinsics)
+        labels += label + ' '
+    return labels
 
 def save_intrinsic_as_json(filename, intrinsics):
     with open(filename, 'w') as outfile:
@@ -506,17 +525,18 @@ if __name__ == "__main__":
         if any(state.mouse_btns):
             axes(out, view(state.pivot), state.rotation, thickness=4)
 
+
+        # show yolo detection
+        labels = process_detection(color_image, detection, depth_intrinsics, out)
+
         # Print fps
         dt = time.time() - now + 1e-8
-        print("FPS: "+str(1/dt))
+        # print("FPS: "+str(1/dt))
 
         cv2.setWindowTitle(
-            state.WIN_NAME, "RealSense (%dx%d) %dFPS (%.2fms) %s" %
-            (w, h, 1.0/dt, dt*1000, "PAUSED" if state.paused else ""))
+            state.WIN_NAME, "%s (%dx%d) %dFPS (%.2fms) %s" %
+            (labels, w, h, 1.0/dt, dt*1000, "PAUSED" if state.paused else ""))
         
-        # show yolo detection
-        process_detection(color_image, detection, depth_intrinsics)
-
         cv2.imshow(state.WIN_NAME, out)
         key = cv2.waitKey(1)
 

@@ -118,26 +118,26 @@ def process_detection(frame, outs):
     print('detections:', len(indices))
 
     # only save detection if person is detected
-    if 0 in indices:
-        print("Person detected")
+    # if 0 in indices:
+    #     print("Person detected")
         # person_i = np.argwhere(classIds==0)
-        person_i = 0
-        person_x = int(boxes[person_i][0] + boxes[person_i][2] / 2)
-        person_y = int(boxes[person_i][1] + boxes[person_i][3] / 2)
-        for i in indices:
-            # i = i[0]
-            box = boxes[i]
-            left = box[0]
-            top = box[1]
-            width = box[2]
-            height = box[3]
-            right = min(left+width, frameWidth-1)
-            bottom = min(top+height, frameHeight-1)
-            x = int(left+width/2)
-            y = int(top+ height/2)
-            # only save objects in short distance from person
-            if np.linalg.norm(np.array([x, y]) - np.array([person_x, person_y])) <= 300:
-                drawPredicted(classIds[i], confidences[i],  left, top, left+width, top+height, frame, x, y)
+        # person_i = 0
+        # person_x = int(boxes[person_i][0] + boxes[person_i][2] / 2)
+        # person_y = int(boxes[person_i][1] + boxes[person_i][3] / 2)
+    for i in indices:
+        # i = i[0]
+        box = boxes[i]
+        left = box[0]
+        top = box[1]
+        width = box[2]
+        height = box[3]
+        right = min(left+width, frameWidth-1)
+        bottom = min(top+height, frameHeight-1)
+        x = int(left+width/2)
+        y = int(top+ height/2)
+        # # only save objects in short distance from person
+        # if np.linalg.norm(np.array([x, y]) - np.array([person_x, person_y])) <= 300:
+        drawPredicted(classIds[i], confidences[i],  left, top, left+width, top+height, frame, x, y)
 
 
 def save_intrinsic_as_json(filename, frame):
