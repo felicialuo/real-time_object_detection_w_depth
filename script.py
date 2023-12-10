@@ -13,6 +13,7 @@ import sys
 import json
 from os.path import exists, join, abspath
 import os
+from datetime import datetime
 
 # Path Configs
 OUTPUT_FOLDER = '../output/rs_recording/'
@@ -73,14 +74,18 @@ def getOutputsNames(net):
     return out
 
 def drawPredicted(classId, conf, left, top, right, bottom, frame,x ,y):
+    print(classId, conf, x, y)
     cv2.rectangle(frame, (left,top), (right,bottom), (255,178,50),3)
     dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
     distance = dpt_frame.get_distance(x,y)
     cv2.circle(frame,(x,y),radius=1,color=(0,0,254), thickness=5)
     label = '%.2f' % conf
+
     if classes:
         assert(classId < len(classes))
         label = '%s' %(classes[classId])
+    print('label', label)
+    
     labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
     cv2.putText(frame, label,(left,top-5), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
@@ -109,16 +114,31 @@ def process_detection(frame, outs):
                 confidences.append(float(confidence))
                 boxes.append([left,top,width,height])
     indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
-    for i in indices:
-        # i = i[0]
-        box = boxes[i]
-        left = box[0]
-        top = box[1]
-        width = box[2]
-        height = box[3]
-        x = int(left+width/2)
-        y = int(top+ height/2)
-        drawPredicted(classIds[i], confidences[i], left, top, left+width, top+height,frame,x,y)
+    print('----------')
+    print('detections:', len(indices))
+
+    # only save detection if person is detected
+    if 0 in indices:
+        print("Person detected")
+        # person_i = np.argwhere(classIds==0)
+        person_i = 0
+        person_x = int(boxes[person_i][0] + boxes[person_i][2] / 2)
+        person_y = int(boxes[person_i][1] + boxes[person_i][3] / 2)
+        for i in indices:
+            # i = i[0]
+            box = boxes[i]
+            left = box[0]
+            top = box[1]
+            width = box[2]
+            height = box[3]
+            right = min(left+width, frameWidth-1)
+            bottom = min(top+height, frameHeight-1)
+            x = int(left+width/2)
+            y = int(top+ height/2)
+            # only save objects in short distance from person
+            if np.linalg.norm(np.array([x, y]) - np.array([person_x, person_y])) <= 300:
+                drawPredicted(classIds[i], confidences[i],  left, top, left+width, top+height, frame, x, y)
+
 
 def save_intrinsic_as_json(filename, frame):
     intrinsics = frame.profile.as_video_stream_profile().intrinsics
@@ -152,6 +172,8 @@ if __name__ == "__main__":
     frame_count = 0
     try:
         while True:
+            dt0 = datetime.now()
+            
             # Wait for a coherent pair of frames: depth and color
             # print("122. waiting for frames")
             frames = pipeline.wait_for_frames()
@@ -166,7 +188,7 @@ if __name__ == "__main__":
             color_image = np.asanyarray(color_frame.get_data())
             blob = cv2.dnn.blobFromImage(color_image, 1/255, (inpWidth, inpHeight), [0,0,0],1,crop=False)
             net.setInput(blob)
-            outs = net.forward(getOutputsNames(net))
+            detection = net.forward(getOutputsNames(net))
 
             # Record color and depth images
             if frame_count == 0:
@@ -180,7 +202,7 @@ if __name__ == "__main__":
 
             # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
             depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
-            process_detection(color_image,outs)
+            process_detection(color_image, detection)
             depth_colormap_dim = depth_colormap.shape
             color_colormap_dim = color_image.shape
 
@@ -202,6 +224,11 @@ if __name__ == "__main__":
             cv2.imshow('Real-time YOLO with Depth', images)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+
+            # Print fps
+            process_time = datetime.now() - dt0
+            print("FPS: "+str(1/process_time.total_seconds()))
+
     finally:
         # Stop streaming
         pipeline.stop()
