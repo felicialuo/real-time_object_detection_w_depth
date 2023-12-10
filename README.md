@@ -4,7 +4,8 @@ Real-time object detection and visualization using YOLOv3 and extract depth info
 Original code: [dev_realsense_yolo_v3 by Tony](https://github.com/dovanhuong/dev_realsense_yolo_v3_2d#dev_realsense_yolo_v3-by-tony)
 
 
-## Installation instructions
+## Set Up Environment
+Tested on Windows 10, with AMD® Ryzen 9 7900x & NVIDIA GeForce RTX 3090 Ti.
 ```
 conda create --name realsense
 conda activate realsense
@@ -13,8 +14,8 @@ pip install pyrealsense2
 pip install opencv-python
 ```
 
-## Run the script
-- Download [weight file of yolo]( https://pjreddie.com/media/files/yolov3.weights)
+## Run the Script
+- Download [weight file of YOLOv3]( https://pjreddie.com/media/files/yolov3.weights) and place it in the main directory.
 - Run the script from terminal `python script.py`. Press `Ctrl+C` or `q` to quit.
 - Visualization example:
 <p float="left">
