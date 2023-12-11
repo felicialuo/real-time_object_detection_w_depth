@@ -74,7 +74,7 @@ def getOutputsNames(net):
     return out
 
 def drawPredicted(classId, conf, left, top, right, bottom, frame,x ,y):
-    print(classId, conf, x, y)
+    # print(classId, conf, x, y)
     cv2.rectangle(frame, (left,top), (right,bottom), (255,178,50),3)
     dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
     distance = dpt_frame.get_distance(x,y)

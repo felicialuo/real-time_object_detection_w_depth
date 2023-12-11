@@ -47,7 +47,7 @@ class AppState:
         self.prev_mouse = 0, 0
         self.mouse_btns = [False, False, False]
         self.paused = False
-        self.decimate = 1
+        # self.decimate = 1
         self.scale = True
         self.color = True
 
@@ -106,8 +106,8 @@ if not found_rgb:
     print("The demo requires Depth camera with Color sensor")
     sys.exit()
 
-config.enable_stream(rs.stream.depth, rs.format.z16, 6) #30
-config.enable_stream(rs.stream.color, rs.format.bgr8, 6) #30
+config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 6)#30
+config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 6) #30
 
 # Start streaming
 pipeline.start(config)
@@ -121,8 +121,8 @@ w, h = depth_intrinsics.width, depth_intrinsics.height
 
 # Processing blocks
 pc = rs.pointcloud()
-decimate = rs.decimation_filter()
-decimate.set_option(rs.option.filter_magnitude, 2 ** state.decimate)
+# decimate = rs.decimation_filter()
+# decimate.set_option(rs.option.filter_magnitude, 2 ** state.decimate)
 colorizer = rs.colorizer()
 
 
@@ -275,8 +275,8 @@ def pointcloud(out, verts, texcoords, color, painter=True):
     else:
         proj = project(view(verts))
 
-    if state.scale:
-        proj *= 0.5**state.decimate
+    # if state.scale:
+    #     proj *= 0.5**state.decimate
 
     h, w = out.shape[:2]
 
@@ -337,7 +337,7 @@ def img2cam(points, K, depths=None):
 
 def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
     # print('original', left, top, right, bottom)
-    left, top, right, bottom = left//2, top//2, right//2, bottom//2 # view w 320 h 240
+    # left, top, right, bottom = left//2, top//2, right//2, bottom//2 # view w 320 h 240
     # print('after', left, top, right, bottom)
     dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
 
@@ -432,7 +432,74 @@ def process_detection(frame, outs, intrinsics, out):
         labels += label + ' '
     return labels
 
-def save_intrinsic_as_json(filename, intrinsics):
+def drawYOLO(classId, conf, left, top, right, bottom, frame,x ,y):
+    # print(classId, conf, x, y)
+    cv2.rectangle(frame, (left,top), (right,bottom), (255,178,50),3)
+    dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
+    distance = dpt_frame.get_distance(x,y)
+    cv2.circle(frame,(x,y),radius=1,color=(0,0,254), thickness=5)
+    label = '%.2f' % conf
+
+    if classes:
+        assert(classId < len(classes))
+        label = '%s' %(classes[classId])
+    print('label', label)
+    
+    labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    top = max(top, labelSize[1])
+    cv2.putText(frame, label,(left,top-5), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
+    distance_string = "Dist: " + str(round(distance,2)) + " meter away"
+    cv2.putText(frame,distance_string,(left,top+30), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
+
+def process_YOLO(frame, outs):
+    frameHeight = frame.shape[0]
+    frameWidth = frame.shape[1]
+    classIds = []
+    confidences = []
+    boxes = []
+    for out in outs:
+        for detection in out:
+            scores = detection[5:]
+            classId = np.argmax(scores)
+            confidence = scores[classId]
+            if confidence > confThreshold:
+                center_x = int(detection[0]*frameWidth)
+                center_y = int(detection[1]*frameHeight)
+                width = int(detection[2]*frameWidth)
+                height = int(detection[3]*frameHeight)
+                left = int(center_x - width/2)
+                top = int(center_y - height/2)
+                classIds.append(classId)
+                confidences.append(float(confidence))
+                boxes.append([left,top,width,height])
+    indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
+    print('----------')
+    print('detections:', len(indices))
+
+    # only save detection if person is detected
+    # if 0 in indices:
+    #     print("Person detected")
+        # person_i = np.argwhere(classIds==0)
+        # person_i = 0
+        # person_x = int(boxes[person_i][0] + boxes[person_i][2] / 2)
+        # person_y = int(boxes[person_i][1] + boxes[person_i][3] / 2)
+    for i in indices:
+        # i = i[0]
+        box = boxes[i]
+        left = box[0]
+        top = box[1]
+        width = box[2]
+        height = box[3]
+        right = min(left+width, frameWidth-1)
+        bottom = min(top+height, frameHeight-1)
+        x = int(left+width/2)
+        y = int(top+ height/2)
+        # # only save objects in short distance from person
+        # if np.linalg.norm(np.array([x, y]) - np.array([person_x, person_y])) <= 300:
+        drawYOLO(classIds[i], confidences[i],  left, top, left+width, top+height, frame, x, y)
+
+def save_intrinsic_as_json(filename, frame):
+    intrinsics = frame.profile.as_video_stream_profile().intrinsics
     with open(filename, 'w') as outfile:
         obj = json.dump(
             {
@@ -472,8 +539,10 @@ if __name__ == "__main__":
 
             depth_frame = frames.get_depth_frame()
             color_frame = frames.get_color_frame()
+            # print("before decimate", np.asanyarray(depth_frame.get_data()).shape)
 
-            depth_frame = decimate.process(depth_frame)
+            # depth_frame = decimate.process(depth_frame)
+            # print("after decimate", np.asanyarray(depth_frame.get_data()).shape)
 
             # Grab new intrinsics (may be changed by decimation)
             depth_intrinsics = rs.video_stream_profile(
@@ -483,12 +552,37 @@ if __name__ == "__main__":
             depth_image = np.asanyarray(depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
 
-            # Get yolo detection
-            blob = cv2.dnn.blobFromImage(color_image, 1/255, (inpWidth, inpHeight), [0,0,0],1,crop=False)
+            ''' ------------------------ '''
+            ''' Get yolo detection '''
+            color_YOLO = color_image.copy()
+            depth_YOLO = depth_image.copy()
+            blob = cv2.dnn.blobFromImage(color_YOLO, 1/255, (inpWidth, inpHeight), [0,0,0],1,crop=False)
             net.setInput(blob)
             detection = net.forward(getOutputsNames(net))
             # print('----yolo detection')s
-            
+
+            # Record color and depth images
+            if frame_count == 0:
+                save_intrinsic_as_json(
+                    join(OUTPUT_FOLDER, "camera_intrinsic.json"),
+                    color_frame)
+            cv2.imwrite("%s/%06d.png" % \
+                    (PATH_DEPTH, frame_count), depth_YOLO)
+            cv2.imwrite("%s/%06d.jpg" % \
+                    (PATH_COLOR, frame_count), color_YOLO)
+            # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
+            depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_YOLO, alpha=0.03), cv2.COLORMAP_JET)
+            process_YOLO(color_YOLO, detection)
+            depth_colormap_dim = depth_colormap.shape
+            color_colormap_dim = color_YOLO.shape
+
+            # Save the annotated image with detection
+            cv2.imwrite("%s/%06d.jpg" % \
+                    (PATH_DET, frame_count), color_YOLO)
+            print("Saved color + depth + detection %06d" % frame_count)
+            frame_count += 1
+            ''' ------------------------ '''
+
             depth_colormap = np.asanyarray(
                 colorizer.colorize(depth_frame).get_data())
 
@@ -546,9 +640,9 @@ if __name__ == "__main__":
         if key == ord("p"):
             state.paused ^= True
 
-        if key == ord("d"):
-            state.decimate = (state.decimate + 1) % 3
-            decimate.set_option(rs.option.filter_magnitude, 2 ** state.decimate)
+        # if key == ord("d"):
+        #     state.decimate = (state.decimate + 1) % 3
+        #     decimate.set_option(rs.option.filter_magnitude, 2 ** state.decimate)
 
         if key == ord("z"):
             state.scale ^= True
