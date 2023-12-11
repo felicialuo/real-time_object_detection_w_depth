@@ -29,6 +29,7 @@ import math
 import time
 import cv2
 import numpy as np
+import csv
 import pyrealsense2 as rs
 
 import sys
@@ -72,10 +73,14 @@ OUTPUT_FOLDER = '../output/rs_recording/'
 PATH_DEPTH  = OUTPUT_FOLDER + 'depth/'
 PATH_COLOR = OUTPUT_FOLDER + 'color'
 PATH_DET = OUTPUT_FOLDER + 'detection'
+PATH_BBOX = OUTPUT_FOLDER + 'det_3d_bbox'
+PATH_MESH = OUTPUT_FOLDER + 'mesh'
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 os.makedirs(PATH_DEPTH, exist_ok=True)
 os.makedirs(PATH_COLOR, exist_ok=True)
 os.makedirs(PATH_DET, exist_ok=True)
+os.makedirs(PATH_BBOX, exist_ok=True)
+os.makedirs(PATH_MESH, exist_ok=True)
 
 # Initialize the parameters
 confThreshold = 0.5
@@ -339,6 +344,8 @@ def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
     # print('original', left, top, right, bottom)
     # left, top, right, bottom = left//2, top//2, right//2, bottom//2 # view w 320 h 240
     # print('after', left, top, right, bottom)
+    cx = (left + right) // 2
+    cy = (top + bottom) // 2
     dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
 
     label = '%.2f' % conf
@@ -346,16 +353,18 @@ def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
         assert(classId < len(classes))
         label = '%s' %(classes[classId])
 
-    print('label', label)
+    # print('label', label)
 
     dist_tl = dpt_frame.get_distance(left, top)
     dist_tr = dpt_frame.get_distance(right, top)
     dist_bl = dpt_frame.get_distance(left, bottom)
     dist_br = dpt_frame.get_distance(right, bottom)
+    dist_center = dpt_frame.get_distance(cx, cy)
     dist_min = min(dist_tl, dist_tr, dist_bl, dist_br)
     dist_max = max(dist_tl, dist_tr, dist_bl, dist_br)
     # print('dist', dist_tl, dist_tr, dist_bl, dist_br)
 
+    out_bbox = np.zeros((27))
     if dist_min and dist_max: # only draw if valid distance
         # get 3d bbox vertices
         tl_front = rs.rs2_deproject_pixel_to_point(intrinsics, [left, top], dist_min)
@@ -367,6 +376,8 @@ def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
         tr_back = rs.rs2_deproject_pixel_to_point(intrinsics, [right, top], dist_max)
         bl_back = rs.rs2_deproject_pixel_to_point(intrinsics, [left, bottom], dist_max)
         br_back = rs.rs2_deproject_pixel_to_point(intrinsics, [right, bottom], dist_max)
+
+        center =  rs.rs2_deproject_pixel_to_point(intrinsics, [cx, cy], dist_center)
 
         # draw 3d bbox
         line3d(out, view(tl_front), view(tr_front), color=(0x8B, 0x0, 0x0), thickness=3)
@@ -384,7 +395,9 @@ def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
         line3d(out, view(bl_front), view(bl_back), color=(0x8B, 0x0, 0x0), thickness=3)
         line3d(out, view(br_front), view(br_back), color=(0x8B, 0x0, 0x0), thickness=3)
     
-    return label
+        out_bbox = np.array([tl_front, tr_front, bl_front, br_front, tl_back, tr_back, bl_back, br_back, center]).flatten()
+
+    return classId, out_bbox
 
 
 def process_detection(frame, outs, intrinsics, out):
@@ -415,7 +428,7 @@ def process_detection(frame, outs, intrinsics, out):
     # only save detection if person is detected
     # if 0 in indices:
     #     print("Person detected")
-    labels = ''
+    labels_bbox = dict()
     for i in indices:
         # i = i[0]
         box = boxes[i]
@@ -425,12 +438,13 @@ def process_detection(frame, outs, intrinsics, out):
         height = box[3]
         right = min(left+width, frameWidth-1)
         bottom = min(top+height, frameHeight-1)
-        x = int(left+width/2)
-        y = int(top+ height/2)
+        # x = int(left+width/2)
+        # y = int(top+ height/2)
         # drawPredicted(classIds[i], confidences[i], x, y, intrinsics)
-        label = drawPredicted(classIds[i], confidences[i], left, top, right, bottom, intrinsics)
-        labels += label + ' '
-    return labels
+        classId, bbox = drawPredicted(classIds[i], confidences[i], left, top, right, bottom, intrinsics)
+        labels_bbox[classId] = bbox
+        print(classId, classes[classId], bbox.shape)
+    return labels_bbox
 
 def drawYOLO(classId, conf, left, top, right, bottom, frame,x ,y):
     # print(classId, conf, x, y)
@@ -443,7 +457,7 @@ def drawYOLO(classId, conf, left, top, right, bottom, frame,x ,y):
     if classes:
         assert(classId < len(classes))
         label = '%s' %(classes[classId])
-    print('label', label)
+    # print('label', label)
     
     labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
@@ -528,9 +542,17 @@ if __name__ == "__main__":
     print("set up yolo")
 
     out = np.empty((h, w, 3), dtype=np.uint8)
-    frame_count = 0
+    frame_count = 440
+    detection_npz = []
+    prev_time = time.time()
     while True:
+        # run once every 60 seconds
         now = time.time()
+        time_elapsed = now - prev_time
+        if time_elapsed < 60:
+            continue
+        prev_time = now
+        print('======running======')
 
         # Grab camera data
         if not state.paused:
@@ -562,10 +584,6 @@ if __name__ == "__main__":
             # print('----yolo detection')s
 
             # Record color and depth images
-            if frame_count == 0:
-                save_intrinsic_as_json(
-                    join(OUTPUT_FOLDER, "camera_intrinsic.json"),
-                    color_frame)
             cv2.imwrite("%s/%06d.png" % \
                     (PATH_DEPTH, frame_count), depth_YOLO)
             cv2.imwrite("%s/%06d.jpg" % \
@@ -580,7 +598,6 @@ if __name__ == "__main__":
             cv2.imwrite("%s/%06d.jpg" % \
                     (PATH_DET, frame_count), color_YOLO)
             print("Saved color + depth + detection %06d" % frame_count)
-            frame_count += 1
             ''' ------------------------ '''
 
             depth_colormap = np.asanyarray(
@@ -599,11 +616,18 @@ if __name__ == "__main__":
             verts = np.asanyarray(v).view(np.float32).reshape(-1, 3)  # xyz
             texcoords = np.asanyarray(t).view(np.float32).reshape(-1, 2)  # uv
 
+            # save camera intrinsic
+            if frame_count == 0:
+                save_intrinsic_as_json(
+                    join(OUTPUT_FOLDER, "camera_intrinsic.json"),
+                    color_frame)
+            frame_count += 1
+
 
         # Render
         out.fill(0)
 
-        grid(out, (0, 0.5, 1), size=1, n=10)
+        # grid(out, (0, 0.5, 1), size=1, n=10)
         frustum(out, depth_intrinsics)
         axes(out, view([0, 0, 0]), state.rotation, size=0.1, thickness=1)
 
@@ -620,19 +644,49 @@ if __name__ == "__main__":
             axes(out, view(state.pivot), state.rotation, thickness=4)
 
 
-        # show yolo detection
-        labels = process_detection(color_image, detection, depth_intrinsics, out)
+        # show 3d detection bbox
+        labels = ''
+        labels_bbox = process_detection(color_image, detection, depth_intrinsics, out)
+        # all curr det in 1 string
+        for key in labels_bbox.keys():
+            labels = labels + classes[key] + ' '
 
-        # Print fps
-        dt = time.time() - now + 1e-8
-        # print("FPS: "+str(1/dt))
+        # save to csv
+        csv_data = [[key] + value.tolist() for key, value in labels_bbox.items()]
+        # Specify the CSV file name
+        csv_file = "%s/%06d.csv" % (PATH_BBOX, frame_count)
+        # Writing to CSV
+        with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            # Writing header (optional, adjust as needed)
+            writer.writerow(['class', \
+                             'left',' top', 'right', 'bottom', \
+                             'dist_min',' dist_max'])
+            writer.writerows(csv_data)
+
+        # Save mesh.ply
+        points.export_to_ply("%s/%06d.ply" % (PATH_MESH, frame_count), mapped_frame)
+
+        # # Print fps
+        # dt = time.time() - now + 1e-8
+        # # print("FPS: "+str(1/dt))
 
         cv2.setWindowTitle(
-            state.WIN_NAME, "%s (%dx%d) %dFPS (%.2fms) %s" %
-            (labels, w, h, 1.0/dt, dt*1000, "PAUSED" if state.paused else ""))
+            state.WIN_NAME, "%s (%dx%d) %06d.jpg %s" %
+            (labels, w, h, frame_count, "PAUSED" if state.paused else ""))
         
         cv2.imshow(state.WIN_NAME, out)
         key = cv2.waitKey(1)
+
+        # # Create save_to_ply object
+        # ply = rs.save_to_ply(join(OUTPUT_FOLDER, "out.ply"))
+
+        # # Set options to the desired values
+        # ply.set_option(rs.save_to_ply.option_ply_mesh, False)
+        # ply.set_option(rs.save_to_ply.option_ply_binary, False)
+        # ply.set_option(rs.save_to_ply.option_ply_normals, True)
+        # ply.set_option(rs.save_to_ply.option_ignore_color, False)
+
 
         if key == ord("r"):
             state.reset()
@@ -654,10 +708,17 @@ if __name__ == "__main__":
             cv2.imwrite('./out.png', out)
 
         if key == ord("e"):
-            points.export_to_ply('./out.ply', mapped_frame)
+            # Apply the processing block to the frameset which contains the depth frame and the texture
+            # ply.process(points)
+            points.export_to_ply(join(OUTPUT_FOLDER, "out.ply"), mapped_frame)
 
         if key in (27, ord("q")) or cv2.getWindowProperty(state.WIN_NAME, cv2.WND_PROP_AUTOSIZE) < 0:
-            break
+            # save all detections and last mesh ply
+            # Apply the processing block to the frameset which contains the depth frame and the texture
+            # ply.process(points)
+            points.export_to_ply(join(OUTPUT_FOLDER, "out.ply"), mapped_frame)
+            # print("saved", join(OUTPUT_FOLDER, "out.ply"))
+            # break
 
         
 
