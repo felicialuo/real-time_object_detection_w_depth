@@ -1,7 +1,7 @@
 # Real-time Object Dectection with Depth
-Real-time object detection and visualization using YOLOv3 and extract depth information via Intel RealSense D435i.
+Real-time object detection and 2D/3D visualization using YOLOv3 and extract depth information via Intel RealSense D435i.
 
-Original code: [dev_realsense_yolo_v3 by Tony](https://github.com/dovanhuong/dev_realsense_yolo_v3_2d#dev_realsense_yolo_v3-by-tony)
+Original code of the 2D script: [dev_realsense_yolo_v3 by Tony](https://github.com/dovanhuong/dev_realsense_yolo_v3_2d#dev_realsense_yolo_v3-by-tony)
 
 
 ## Set Up Environment
@@ -16,7 +16,7 @@ pip install opencv-python
 
 ## 2D Viewer
 - Download [weight file of YOLOv3]( https://pjreddie.com/media/files/yolov3.weights) and place it in the main directory.
-- Run the script from terminal `python script.py`. Press `Ctrl+C` or `q` to quit.
+- Run the script from terminal `python script_2d.py`. Press `Ctrl+C` or `q` to quit.
 - Visualization example:
 <p float="left">
    <img src="preview.PNG" width="100%">
