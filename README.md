@@ -14,12 +14,20 @@ pip install pyrealsense2
 pip install opencv-python
 ```
 
-## Run the Script
+## 2D Viewer
 - Download [weight file of YOLOv3]( https://pjreddie.com/media/files/yolov3.weights) and place it in the main directory.
 - Run the script from terminal `python script.py`. Press `Ctrl+C` or `q` to quit.
 - Visualization example:
 <p float="left">
    <img src="preview.PNG" width="100%">
+</p>
+
+## 3D Viewer
+- Download [weight file of YOLOv3]( https://pjreddie.com/media/files/yolov3.weights) and place it in the main directory.
+- Run the script from terminal `python script_3d.py`. Press `p` to pause, `c` to switch color mode, `s` to save current screenshot, `e` to export current mesh. Press `Ctrl+C` or `q` to save last mesh and quit.
+- Visualization example:
+<p float="left">
+   <img src="script_3d_win.PNG" width="50%">
 </p>
 
 ## Troubleshoot

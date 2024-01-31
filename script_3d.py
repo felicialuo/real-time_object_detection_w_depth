@@ -1,6 +1,9 @@
 # License: Apache 2.0. See LICENSE file in root directory.
 # Copyright(c) 2015-2017 Intel Corporation. All Rights Reserved.
 
+# Modified by Felicia Luo to include YOLO object detection and visualize the detectd bounding boxes
+# 01/30/2024
+
 """
 OpenCV and Numpy Point cloud Software Renderer
 
@@ -48,7 +51,6 @@ class AppState:
         self.prev_mouse = 0, 0
         self.mouse_btns = [False, False, False]
         self.paused = False
-        # self.decimate = 1
         self.scale = True
         self.color = True
 
@@ -126,8 +128,6 @@ w, h = depth_intrinsics.width, depth_intrinsics.height
 
 # Processing blocks
 pc = rs.pointcloud()
-# decimate = rs.decimation_filter()
-# decimate.set_option(rs.option.filter_magnitude, 2 ** state.decimate)
 colorizer = rs.colorizer()
 
 
@@ -280,8 +280,6 @@ def pointcloud(out, verts, texcoords, color, painter=True):
     else:
         proj = project(view(verts))
 
-    # if state.scale:
-    #     proj *= 0.5**state.decimate
 
     h, w = out.shape[:2]
 
@@ -340,6 +338,7 @@ def img2cam(points, K, depths=None):
 
     return cam_3d
 
+# draw the 3D bbox of detected object
 def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
     # print('original', left, top, right, bottom)
     # left, top, right, bottom = left//2, top//2, right//2, bottom//2 # view w 320 h 240
@@ -399,7 +398,7 @@ def drawPredicted(classId, conf, left, top, right, bottom, intrinsics):
 
     return classId, out_bbox
 
-
+# gather detected object and call drawPredicted
 def process_detection(frame, outs, intrinsics, out):
     frameHeight = frame.shape[0]
     frameWidth = frame.shape[1]
@@ -422,12 +421,9 @@ def process_detection(frame, outs, intrinsics, out):
                 confidences.append(float(confidence))
                 boxes.append([left,top,width,height])
     indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
-    print('----------')
-    print('detections:', len(indices))
+    # print('----------')
+    # print('detections:', len(indices))
 
-    # only save detection if person is detected
-    # if 0 in indices:
-    #     print("Person detected")
     labels_bbox = dict()
     for i in indices:
         # i = i[0]
@@ -443,74 +439,75 @@ def process_detection(frame, outs, intrinsics, out):
         # drawPredicted(classIds[i], confidences[i], x, y, intrinsics)
         classId, bbox = drawPredicted(classIds[i], confidences[i], left, top, right, bottom, intrinsics)
         labels_bbox[classId] = bbox
-        print(classId, classes[classId], bbox.shape)
+        # print(classId, classes[classId], bbox.shape)
     return labels_bbox
 
-def drawYOLO(classId, conf, left, top, right, bottom, frame,x ,y):
-    # print(classId, conf, x, y)
-    cv2.rectangle(frame, (left,top), (right,bottom), (255,178,50),3)
-    dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
-    distance = dpt_frame.get_distance(x,y)
-    cv2.circle(frame,(x,y),radius=1,color=(0,0,254), thickness=5)
-    label = '%.2f' % conf
+# # original 2d drawPredicted
+# def drawYOLO(classId, conf, left, top, right, bottom, frame,x ,y):
+#     # print(classId, conf, x, y)
+#     cv2.rectangle(frame, (left,top), (right,bottom), (255,178,50),3)
+#     dpt_frame = pipeline.wait_for_frames().get_depth_frame().as_depth_frame()
+#     distance = dpt_frame.get_distance(x,y)
+#     cv2.circle(frame,(x,y),radius=1,color=(0,0,254), thickness=5)
+#     label = '%.2f' % conf
 
-    if classes:
-        assert(classId < len(classes))
-        label = '%s' %(classes[classId])
-    # print('label', label)
+#     if classes:
+#         assert(classId < len(classes))
+#         label = '%s' %(classes[classId])
+#     # print('label', label)
     
-    labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-    top = max(top, labelSize[1])
-    cv2.putText(frame, label,(left,top-5), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
-    distance_string = "Dist: " + str(round(distance,2)) + " meter away"
-    cv2.putText(frame,distance_string,(left,top+30), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
+#     labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+#     top = max(top, labelSize[1])
+#     cv2.putText(frame, label,(left,top-5), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
+#     distance_string = "Dist: " + str(round(distance,2)) + " meter away"
+#     cv2.putText(frame,distance_string,(left,top+30), cv2.FONT_HERSHEY_SIMPLEX,0.75,(255,255,0),2)
 
-def process_YOLO(frame, outs):
-    frameHeight = frame.shape[0]
-    frameWidth = frame.shape[1]
-    classIds = []
-    confidences = []
-    boxes = []
-    for out in outs:
-        for detection in out:
-            scores = detection[5:]
-            classId = np.argmax(scores)
-            confidence = scores[classId]
-            if confidence > confThreshold:
-                center_x = int(detection[0]*frameWidth)
-                center_y = int(detection[1]*frameHeight)
-                width = int(detection[2]*frameWidth)
-                height = int(detection[3]*frameHeight)
-                left = int(center_x - width/2)
-                top = int(center_y - height/2)
-                classIds.append(classId)
-                confidences.append(float(confidence))
-                boxes.append([left,top,width,height])
-    indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
-    print('----------')
-    print('detections:', len(indices))
+# def process_YOLO(frame, outs):
+#     frameHeight = frame.shape[0]
+#     frameWidth = frame.shape[1]
+#     classIds = []
+#     confidences = []
+#     boxes = []
+#     for out in outs:
+#         for detection in out:
+#             scores = detection[5:]
+#             classId = np.argmax(scores)
+#             confidence = scores[classId]
+#             if confidence > confThreshold:
+#                 center_x = int(detection[0]*frameWidth)
+#                 center_y = int(detection[1]*frameHeight)
+#                 width = int(detection[2]*frameWidth)
+#                 height = int(detection[3]*frameHeight)
+#                 left = int(center_x - width/2)
+#                 top = int(center_y - height/2)
+#                 classIds.append(classId)
+#                 confidences.append(float(confidence))
+#                 boxes.append([left,top,width,height])
+#     indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
+#     print('----------')
+#     print('detections:', len(indices))
 
-    # only save detection if person is detected
-    # if 0 in indices:
-    #     print("Person detected")
-        # person_i = np.argwhere(classIds==0)
-        # person_i = 0
-        # person_x = int(boxes[person_i][0] + boxes[person_i][2] / 2)
-        # person_y = int(boxes[person_i][1] + boxes[person_i][3] / 2)
-    for i in indices:
-        # i = i[0]
-        box = boxes[i]
-        left = box[0]
-        top = box[1]
-        width = box[2]
-        height = box[3]
-        right = min(left+width, frameWidth-1)
-        bottom = min(top+height, frameHeight-1)
-        x = int(left+width/2)
-        y = int(top+ height/2)
-        # # only save objects in short distance from person
-        # if np.linalg.norm(np.array([x, y]) - np.array([person_x, person_y])) <= 300:
-        drawYOLO(classIds[i], confidences[i],  left, top, left+width, top+height, frame, x, y)
+#     # only save detection if person is detected
+#     # if 0 in indices:
+#     #     print("Person detected")
+#         # person_i = np.argwhere(classIds==0)
+#         # person_i = 0
+#         # person_x = int(boxes[person_i][0] + boxes[person_i][2] / 2)
+#         # person_y = int(boxes[person_i][1] + boxes[person_i][3] / 2)
+#     for i in indices:
+#         # i = i[0]
+#         box = boxes[i]
+#         left = box[0]
+#         top = box[1]
+#         width = box[2]
+#         height = box[3]
+#         right = min(left+width, frameWidth-1)
+#         bottom = min(top+height, frameHeight-1)
+#         x = int(left+width/2)
+#         y = int(top+ height/2)
+#         # # only save objects in short distance from person
+#         # if np.linalg.norm(np.array([x, y]) - np.array([person_x, person_y])) <= 300:
+#         drawYOLO(classIds[i], confidences[i],  left, top, left+width, top+height, frame, x, y)
 
 def save_intrinsic_as_json(filename, frame):
     intrinsics = frame.profile.as_video_stream_profile().intrinsics
@@ -542,17 +539,21 @@ if __name__ == "__main__":
     print("set up yolo")
 
     out = np.empty((h, w, 3), dtype=np.uint8)
-    frame_count = 440
+    frame_count = 0
     detection_npz = []
     prev_time = time.time()
     while True:
-        # run once every 60 seconds
+        
         now = time.time()
-        time_elapsed = now - prev_time
-        if time_elapsed < 60:
-            continue
+        time_elapsed = now - prev_time+ + 1e-8
+
+        # print fps
+        print('fps:', str(1/time_elapsed))
         prev_time = now
-        print('======running======')
+
+        # # run once every 60 seconds
+        # if time_elapsed < 60:
+        #     continue
 
         # Grab camera data
         if not state.paused:
@@ -561,12 +562,8 @@ if __name__ == "__main__":
 
             depth_frame = frames.get_depth_frame()
             color_frame = frames.get_color_frame()
-            # print("before decimate", np.asanyarray(depth_frame.get_data()).shape)
 
-            # depth_frame = decimate.process(depth_frame)
-            # print("after decimate", np.asanyarray(depth_frame.get_data()).shape)
-
-            # Grab new intrinsics (may be changed by decimation)
+            # Grab new intrinsics
             depth_intrinsics = rs.video_stream_profile(
                 depth_frame.profile).get_intrinsics()
             w, h = depth_intrinsics.width, depth_intrinsics.height
@@ -583,22 +580,22 @@ if __name__ == "__main__":
             detection = net.forward(getOutputsNames(net))
             # print('----yolo detection')s
 
-            # Record color and depth images
-            cv2.imwrite("%s/%06d.png" % \
-                    (PATH_DEPTH, frame_count), depth_YOLO)
-            cv2.imwrite("%s/%06d.jpg" % \
-                    (PATH_COLOR, frame_count), color_YOLO)
+            # # Record color and depth images
+            # cv2.imwrite("%s/%06d.png" % \
+            #         (PATH_DEPTH, frame_count), depth_YOLO)
+            # cv2.imwrite("%s/%06d.jpg" % \
+            #         (PATH_COLOR, frame_count), color_YOLO)
             # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
             depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_YOLO, alpha=0.03), cv2.COLORMAP_JET)
-            process_YOLO(color_YOLO, detection)
+            # process_YOLO(color_YOLO, detection)
             depth_colormap_dim = depth_colormap.shape
             color_colormap_dim = color_YOLO.shape
 
-            # Save the annotated image with detection
-            cv2.imwrite("%s/%06d.jpg" % \
-                    (PATH_DET, frame_count), color_YOLO)
-            print("Saved color + depth + detection %06d" % frame_count)
-            ''' ------------------------ '''
+            # # Save the annotated image with detection
+            # cv2.imwrite("%s/%06d.jpg" % \
+            #         (PATH_DET, frame_count), color_YOLO)
+            # print("Saved color + depth + detection %06d" % frame_count)
+            # ''' ------------------------ '''
 
             depth_colormap = np.asanyarray(
                 colorizer.colorize(depth_frame).get_data())
@@ -651,25 +648,21 @@ if __name__ == "__main__":
         for key in labels_bbox.keys():
             labels = labels + classes[key] + ' '
 
-        # save to csv
-        csv_data = [[key] + value.tolist() for key, value in labels_bbox.items()]
-        # Specify the CSV file name
-        csv_file = "%s/%06d.csv" % (PATH_BBOX, frame_count)
-        # Writing to CSV
-        with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            # Writing header (optional, adjust as needed)
-            writer.writerow(['class', \
-                             'left',' top', 'right', 'bottom', \
-                             'dist_min',' dist_max'])
-            writer.writerows(csv_data)
+        # # save to csv
+        # csv_data = [[key] + value.tolist() for key, value in labels_bbox.items()]
+        # # Specify the CSV file name
+        # csv_file = "%s/%06d.csv" % (PATH_BBOX, frame_count)
+        # # Writing to CSV
+        # with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
+        #     writer = csv.writer(file)
+        #     # Writing header (optional, adjust as needed)
+        #     writer.writerow(['class', \
+        #                      'left',' top', 'right', 'bottom', \
+        #                      'dist_min',' dist_max'])
+        #     writer.writerows(csv_data)
 
-        # Save mesh.ply
-        points.export_to_ply("%s/%06d.ply" % (PATH_MESH, frame_count), mapped_frame)
-
-        # # Print fps
-        # dt = time.time() - now + 1e-8
-        # # print("FPS: "+str(1/dt))
+        # # Save mesh.ply
+        # points.export_to_ply("%s/%06d.ply" % (PATH_MESH, frame_count), mapped_frame)
 
         cv2.setWindowTitle(
             state.WIN_NAME, "%s (%dx%d) %06d.jpg %s" %
@@ -678,25 +671,12 @@ if __name__ == "__main__":
         cv2.imshow(state.WIN_NAME, out)
         key = cv2.waitKey(1)
 
-        # # Create save_to_ply object
-        # ply = rs.save_to_ply(join(OUTPUT_FOLDER, "out.ply"))
-
-        # # Set options to the desired values
-        # ply.set_option(rs.save_to_ply.option_ply_mesh, False)
-        # ply.set_option(rs.save_to_ply.option_ply_binary, False)
-        # ply.set_option(rs.save_to_ply.option_ply_normals, True)
-        # ply.set_option(rs.save_to_ply.option_ignore_color, False)
-
 
         if key == ord("r"):
             state.reset()
 
         if key == ord("p"):
             state.paused ^= True
-
-        # if key == ord("d"):
-        #     state.decimate = (state.decimate + 1) % 3
-        #     decimate.set_option(rs.option.filter_magnitude, 2 ** state.decimate)
 
         if key == ord("z"):
             state.scale ^= True
@@ -705,20 +685,18 @@ if __name__ == "__main__":
             state.color ^= True
 
         if key == ord("s"):
-            cv2.imwrite('./out.png', out)
+            cv2.imwrite(join(OUTPUT_FOLDER, "out.png"), out)
+            print("saved screenshot in", join(OUTPUT_FOLDER, "out.png"))
 
         if key == ord("e"):
-            # Apply the processing block to the frameset which contains the depth frame and the texture
-            # ply.process(points)
             points.export_to_ply(join(OUTPUT_FOLDER, "out.ply"), mapped_frame)
+            print("saved mesh in", join(OUTPUT_FOLDER, "out.ply"))
 
         if key in (27, ord("q")) or cv2.getWindowProperty(state.WIN_NAME, cv2.WND_PROP_AUTOSIZE) < 0:
-            # save all detections and last mesh ply
-            # Apply the processing block to the frameset which contains the depth frame and the texture
-            # ply.process(points)
+            # save last mesh ply
             points.export_to_ply(join(OUTPUT_FOLDER, "out.ply"), mapped_frame)
-            # print("saved", join(OUTPUT_FOLDER, "out.ply"))
-            # break
+            print("saved mesh in", join(OUTPUT_FOLDER, "out.ply"))
+            break
 
         
 
