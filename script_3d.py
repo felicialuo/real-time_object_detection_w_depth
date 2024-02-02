@@ -551,7 +551,7 @@ if __name__ == "__main__":
         print('fps:', str(1/time_elapsed))
         prev_time = now
 
-        # # run once every 60 seconds
+        # # run once every 60 seconds 
         # if time_elapsed < 60:
         #     continue
 
