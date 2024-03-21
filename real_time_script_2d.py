@@ -84,7 +84,7 @@ def drawPredicted(classId, conf, left, top, right, bottom, frame,x ,y):
     if classes:
         assert(classId < len(classes))
         label = '%s' %(classes[classId])
-    print('label', label)
+    # print('label', label)
     
     labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
@@ -114,8 +114,8 @@ def process_detection(frame, outs):
                 confidences.append(float(confidence))
                 boxes.append([left,top,width,height])
     indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
-    print('----------')
-    print('detections:', len(indices))
+    # print('----------')
+    # print('detections:', len(indices))
 
     # only save detection if person is detected
     # if 0 in indices:
@@ -195,7 +195,9 @@ if __name__ == "__main__":
                 save_intrinsic_as_json(
                     join(OUTPUT_FOLDER, "camera_intrinsic.json"),
                     color_frame)
-            cv2.imwrite("%s/%06d.png" % \
+            # cv2.imwrite("%s/%06d.png" % \
+            #         (PATH_DEPTH, frame_count), depth_image)
+            np.savez_compressed("%s/%06d.npz" % \
                     (PATH_DEPTH, frame_count), depth_image)
             cv2.imwrite("%s/%06d.jpg" % \
                     (PATH_COLOR, frame_count), color_image)
@@ -209,7 +211,7 @@ if __name__ == "__main__":
             # Save the annotated image with detection
             cv2.imwrite("%s/%06d.jpg" % \
                     (PATH_DET, frame_count), color_image)
-            print("Saved color + depth + detection %06d" % frame_count)
+            # print("Saved color + depth + detection %06d" % frame_count)
             frame_count += 1
 
             # If depth and color resolutions are different, resize color image to match depth image for display
@@ -227,7 +229,7 @@ if __name__ == "__main__":
 
             # Print fps
             process_time = datetime.now() - dt0
-            print("FPS: "+str(1/process_time.total_seconds()))
+            # print("FPS: "+str(1/process_time.total_seconds()))
 
     finally:
         # Stop streaming
