@@ -21,7 +21,7 @@ def make_videos_from_frames(frame_folder, output_folder, frame_rate=30, num_fram
         out.release()
 
 if __name__ == '__main__':
-    DATASET_FOLDER = '../datasets/20240404_18_33_38_fps1_clip_1_0/'
+    DATASET_FOLDER = '../datasets/event_20240405_18_06_48_fps1_clip_1_0/'
     NUM_FRAMES = 60
     fps = 10
 

@@ -12,7 +12,7 @@ from datetime import datetime
 import csv
 
 ## SPECIFY THESE ##
-DATASET_FOLDER = '../datasets/20240404_18_33_38_fps1_clip_1_0/'
+DATASET_FOLDER = '../datasets/event_20240405_18_06_48_fps1_clip_1_0/'
 
 # Path Configs
 PATH_DEPTH  = DATASET_FOLDER + 'depth/'
